@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestione Spese Mensili</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 1rem;
+      max-width: 600px;
+      margin: auto;
+    }
+    label, select, input, textarea, button {
+      display: block;
+      margin-top: 10px;
+      width: 100%;
+      font-size: 1.1rem;
+    }
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #f4f4f4;
+    }
+    h2 {
+      margin-top: 2rem;
+    }
+    a {
+      display: block;
+      margin: 5px 0;
+      font-size: 1.1rem;
+      color: blue;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .hidden {
+      display: none;
+    }
+    .action-button {
+      margin-left: 10px;
+      color: red;
+      cursor: pointer;
+    }
+    .edit-button {
+      margin-left: 10px;
+      color: green;
+      cursor: pointer;
+    }
+    canvas {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Gestione Spese Mensili</h1>
+  <div id="menuPrincipale">
+    
+    <label for="mese">Seleziona Mese:</label>
+    <input type="month" id="mese">
+
+    <label for="categoria">Categoria:</label>
+    <select id="categoria">
+      <option value="Alimentari">Alimentari</option>
+      <option value="Casa">Casa</option>
+      <option value="Trasporti">Trasporti</option>
+      <option value="Salute">Salute</option>
+      <option value="Tempo libero">Tempo libero</option>
+      <option value="Mutuo">Mutuo</option>
+      <option value="Bollette">Bollette</option>
+      <option value="Altro">Altro</option>
+    </select>
+
+    <label for="importo">Importo:</label>
+    <input type="number" id="importo" step="0.01" placeholder="Inserisci importo">
+
+    <label for="commento">Commento:</label>
+    <textarea id="commento" rows="2" placeholder="Aggiungi un commento opzionale..."></textarea>
+
+    <button onclick="aggiungiSpesa()">Aggiungi Spesa</button>
+
+    <h2>Vai ai dettagli</h2>
+    <div id="linkCategorie"></div>
+    <a onclick="mostraTutteLeSpese()">Tutte le spese del mese</a>
+    <button onclick="toggleGrafico()">Mostra/Nascondi grafico</button>
+    <canvas id="graficoTorta" class="hidden"></canvas>
+  </div>
+
+  <div id="paginaCategoria" class="hidden">
+    <button onclick="tornaAlMenu()">&larr; Torna al menu principale</button>
+    <h2 id="titoloCategoria"></h2>
+    <table>
+      <thead>
+        <tr><th>Data</th><th>Importo €</th><th>Commento</th><th id="intestazioneAzione"></th></tr>
+      </thead>
+      <tbody id="dettagliCategoria"></tbody>
+    </table>
+    <h3 id="totaleCategoria"></h3>
+    
+  </div>
+
+  <script>
+    let speseSalvate = JSON.parse(localStorage.getItem('speseData')) || {};
+    let meseCorrente = new Date().toISOString().slice(0, 7);
+    document.getElementById('mese').value = meseCorrente;
+    let grafico;
+
+    function getChiaveMese() {
+      return document.getElementById('mese').value;
+    }
+
+    function salvaDati() {
+      localStorage.setItem('speseData', JSON.stringify(speseSalvate));
+    }
+
+    function aggiungiSpesa() {
+      const mese = getChiaveMese();
+      const categoria = document.getElementById('categoria').value;
+      const importo = parseFloat(document.getElementById('importo').value);
+      const commento = document.getElementById('commento').value.trim();
+      const data = new Date().toLocaleDateString('it-IT');
+
+      if (!importo || importo <= 0) {
+        alert('Inserisci un importo valido.');
+        return;
+      }
+
+      if (!speseSalvate[mese]) speseSalvate[mese] = {};
+      if (!speseSalvate[mese][categoria]) speseSalvate[mese][categoria] = [];
+
+      speseSalvate[mese][categoria].push({ data, importo, commento });
+      document.getElementById('importo').value = '';
+      document.getElementById('commento').value = '';
+      salvaDati();
+      aggiornaLinkCategorie();
+      // aggiornaGrafico(mese);  // Rimosso per evitare apertura automatica del grafico
+      aggiornaLinkCategorie();
+    }
+
+    function mostraDettagli(categoria) {
+      const mese = getChiaveMese();
+      const tutteLeSpese = !categoria;
+      document.getElementById('menuPrincipale').classList.add('hidden');
+      document.getElementById('paginaCategoria').classList.remove('hidden');
+      document.getElementById('titoloCategoria').textContent = tutteLeSpese ? `Tutte le spese del mese` : `Spese - ${categoria}`;
+
+      const tbody = document.getElementById('dettagliCategoria');
+      tbody.innerHTML = '';
+      let totale = 0;
+      const spese = tutteLeSpese ? speseSalvate[mese] : { [categoria]: speseSalvate[mese][categoria] };
+
+      for (let cat in spese) {
+        spese[cat].forEach((voce, index) => {
+          totale += voce.importo;
+          const row = document.createElement('tr');
+          row.innerHTML = `<td>${voce.data}</td><td>${voce.importo.toFixed(2)}</td><td>${voce.commento || ''}</td>` +
+            (tutteLeSpese ? `<td>${cat}</td>` : `<td><span class='edit-button' onclick="modificaSpesa('${cat}', ${index})">Modifica</span><span class='action-button' onclick="eliminaSpesa('${cat}', ${index})">Elimina</span></td>`);
+          tbody.appendChild(row);
+        });
+      }
+
+      document.getElementById('intestazioneAzione').textContent = tutteLeSpese ? 'Categoria' : 'Azioni';
+      document.getElementById('totaleCategoria').textContent = `Totale: € ${totale.toFixed(2)}`;
+      aggiornaGrafico(mese);
+    }
+
+    function mostraTutteLeSpese() {
+      mostraDettagli(null);
+    }
+
+    function eliminaSpesa(categoria, index) {
+      const mese = getChiaveMese();
+      speseSalvate[mese][categoria].splice(index, 1);
+      if (speseSalvate[mese][categoria].length === 0) delete speseSalvate[mese][categoria];
+      salvaDati();
+      mostraDettagli(categoria);
+      aggiornaLinkCategorie();
+    }
+
+    function modificaSpesa(categoria, index) {
+  const mese = getChiaveMese();
+  const voce = speseSalvate[mese][categoria][index];
+  const nuovoImporto = prompt("Modifica importo:", voce.importo);
+  if (nuovoImporto === null) return;
+  const importoValido = parseFloat(nuovoImporto);
+  if (isNaN(importoValido) || importoValido <= 0) {
+    alert("Inserisci un importo numerico valido maggiore di zero.");
+    return;
+  }
+  const nuovoCommento = prompt("Modifica commento:", voce.commento);
+  voce.importo = importoValido;
+  voce.commento = nuovoCommento;
+  salvaDati();
+  mostraDettagli(categoria);
+}
+
+    function aggiornaGrafico(mese) {
+      const canvas = document.getElementById('graficoTorta');
+      const ctx = canvas.getContext('2d');
+      if (grafico) grafico.destroy();
+      if (!speseSalvate[mese]) return;
+
+      const labels = [];
+      const dati = [];
+      let totaleSpese = 0;
+
+      for (let cat in speseSalvate[mese]) {
+        const somma = speseSalvate[mese][cat].reduce((acc, voce) => acc + voce.importo, 0);
+        labels.push(cat);
+        dati.push(somma);
+        totaleSpese += somma;
+      }
+
+      const percentuali = dati.map(val => ((val / totaleSpese) * 100).toFixed(1) + '%');
+      const etichetteConPercentuale = labels.map((cat, i) => `${cat} (${percentuali[i]})`);
+
+      grafico = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: etichetteConPercentuale,
+          datasets: [{
+            data: dati,
+            backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40']
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              position: 'bottom'
+            }
+          }
+        }
+      });
+    }
+
+    function aggiornaLinkCategorie() {
+      const mese = getChiaveMese();
+      const container = document.getElementById('linkCategorie');
+      container.innerHTML = '';
+      if (!speseSalvate[mese]) return;
+      for (let cat in speseSalvate[mese]) {
+        const totale = speseSalvate[mese][cat].reduce((acc, voce) => acc + voce.importo, 0);
+        const link = document.createElement('a');
+        link.textContent = `${cat} (${totale.toFixed(2)} €)`;
+        link.onclick = () => mostraDettagli(cat);
+        container.appendChild(link);
+      }
+    }
+
+    function toggleGrafico() {
+      const canvas = document.getElementById('graficoTorta');
+      if (canvas.style.display === 'none' || canvas.classList.contains('hidden')) {
+        canvas.style.display = 'block';
+        canvas.classList.remove('hidden');
+        aggiornaGrafico(getChiaveMese());
+      } else {
+        canvas.style.display = 'none';
+        canvas.classList.add('hidden');
+      }
+    }
+
+    function tornaAlMenu() {
+  document.getElementById('paginaCategoria').classList.add('hidden');
+  document.getElementById('menuPrincipale').classList.remove('hidden');
+  const canvas = document.getElementById('graficoTorta');
+  canvas.style.display = 'none';
+  canvas.classList.add('hidden');
+}
+
+    document.getElementById('mese').addEventListener('change', aggiornaLinkCategorie);
+    aggiornaLinkCategorie();
+  </script>
+</body>
+</html>
